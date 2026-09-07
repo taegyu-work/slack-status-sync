@@ -49,7 +49,11 @@ export async function getCalendarView(token, mailbox, startIso, endIso, tz = 'Ko
  * A meeting counts only if: not all-day, showAs=busy, the user accepted it or
  * organises it, and (when requireAttendeeOrOnline) it has another attendee or
  * an online-meeting link — which filters out personal focus-time blocks.
+ * Events whose subject looks like leave (연차/반차/휴가/재택/외근) are ignored —
+ * leave often lands on the personal calendar too (via Daou → own cal → hr@).
  */
+const LEAVE_SUBJECT = /연차|반차|반반차|휴가|재택|외근|out of office|OOO/i;
+
 export async function getMeetingNow(token, mailbox, now, lookaheadMs, opts = {}) {
   const { tz = 'Korea Standard Time', requireAttendeeOrOnline = true } = opts;
   const startIso = new Date(now.getTime() - 60_000).toISOString();
@@ -58,7 +62,7 @@ export async function getMeetingNow(token, mailbox, now, lookaheadMs, opts = {})
   const url =
     `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}/calendarView` +
     `?startDateTime=${encodeURIComponent(startIso)}&endDateTime=${encodeURIComponent(endIso)}` +
-    `&$select=start,end,isAllDay,showAs,responseStatus,isOnlineMeeting,attendees&$top=50&$orderby=start/dateTime`;
+    `&$select=subject,start,end,isAllDay,showAs,responseStatus,isOnlineMeeting,attendees&$top=50&$orderby=start/dateTime`;
 
   const res = await fetch(url, {
     headers: { authorization: `Bearer ${token}`, Prefer: `outlook.timezone="${tz}"` },
@@ -71,6 +75,7 @@ export async function getMeetingNow(token, mailbox, now, lookaheadMs, opts = {})
   for (const ev of json.value || []) {
     if (ev.isAllDay) continue;
     if (ev.showAs !== 'busy') continue;
+    if (LEAVE_SUBJECT.test(ev.subject || '')) continue; // it's leave, not a meeting
     const resp = ev.responseStatus?.response;
     if (resp !== 'organizer' && resp !== 'accepted') continue;
     if (requireAttendeeOrOnline && !ev.isOnlineMeeting && !(ev.attendees?.length >= 1)) continue;
