@@ -1,0 +1,15 @@
+name = "evertri-slack-status"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Created with:  wrangler kv namespace create evertri-slack-status
+# Paste the printed id below.
+[[kv_namespaces]]
+binding = "KV"
+id = "462e5f7534364d2abbbbb690403b8f8d"
+
+# Secrets (set with `wrangler secret put <NAME>`), do NOT put them here:
+#   SLACK_CLIENT_ID
+#   SLACK_CLIENT_SECRET
+#   REDIRECT_URI          e.g. https://evertri-slack-status.<subdomain>.workers.dev/callback
+#   SYNC_SECRET           a long random string; the GitHub Action sends it as a bearer token

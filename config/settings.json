@@ -1,0 +1,22 @@
+{
+  "timezone": "Asia/Seoul",
+  "graphTimezone": "Korea Standard Time",
+  "utcOffset": "+09:00",
+  "workday": { "start": "09:00", "end": "18:00", "halfDaySplit": "13:00" },
+  "lookaheadMinutes": 30,
+  "meetings": {
+    "enabled": true,
+    "lookaheadMinutes": 2,
+    "requireAttendeeOrOnline": true
+  },
+  "dryRun": false,
+  "notes": [
+    "Korea has no DST, so utcOffset is a fixed +09:00 used to build wall-clock times.",
+    "lookaheadMinutes: how early before an away-window starts the day status is set (handles afternoon 반차 on a morning run).",
+    "meetings.enabled: also read each connected user's own calendar and show 회의 중 during a meeting. Set false to disable.",
+    "meetings.lookaheadMinutes: how early before a meeting starts to show 회의 중 (keep small).",
+    "meetings.requireAttendeeOrOnline: only count events with another attendee or an online-meeting link (skips solo focus-time blocks).",
+    "Priority: 연차/반차/외근 always win; 재택 yields to 회의 중 during the meeting.",
+    "Set dryRun true (or run the workflow with dry_run) to log intended changes without touching Slack."
+  ]
+}

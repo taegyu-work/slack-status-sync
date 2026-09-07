@@ -1,0 +1,10 @@
+node_modules/
+last-run.json
+*.local
+.dev.vars
+.env
+.wrangler/
+# never commit these — real employee data / deployment identifiers
+config/roster.csv
+DEPLOYMENT.md
+*.secret

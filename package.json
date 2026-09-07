@@ -1,0 +1,16 @@
+{
+  "name": "hr-slack-status",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Set Slack statuses from a shared HR calendar + personal meetings (재택/연차/반차/외근/회의).",
+  "scripts": {
+    "sync": "node src/sync.mjs",
+    "dry": "DRY_RUN=1 node src/sync.mjs",
+    "roster:push": "node --env-file=.env scripts/push-roster.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

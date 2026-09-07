@@ -1,0 +1,6 @@
+﻿name,team,email,비고
+홍길동,경영기획본부,gildong@example.com,
+김철수,Medical Writing,chulsoo@example.com,
+이영희,임상시험 사업,younghee@example.com,동명이인은 team으로 구분
+이영희,인허가 사업,younghee2@example.com,동명이인은 team으로 구분
+박민수,,minsu@example.com,team은 동명이인이 없으면 비워도 됨
