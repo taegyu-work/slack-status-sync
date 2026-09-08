@@ -8,8 +8,18 @@ compatibility_date = "2025-01-01"
 binding = "KV"
 id = "462e5f7534364d2abbbbb690403b8f8d"
 
-# Secrets (set with `wrangler secret put <NAME>`), do NOT put them here:
+# Cron fires every 5 min; the scheduled() handler itself bails outside KST
+# working hours (Mon–Fri ~06:00–20:00). Cloudflare's cron parser rejects the
+# hour/day-of-week ranges you'd otherwise use here, so the guard lives in code.
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Secrets (set with `wrangler secret put <NAME>`), do NOT put them here — the
+# repo is public:
 #   SLACK_CLIENT_ID
 #   SLACK_CLIENT_SECRET
-#   REDIRECT_URI          e.g. https://evertri-slack-status.<subdomain>.workers.dev/callback
-#   SYNC_SECRET           a long random string; the GitHub Action sends it as a bearer token
+#   SYNC_SECRET           long random string; the GitHub leave job sends it as a bearer token
+#   MS_TENANT_ID          Entra tenant id
+#   MS_CLIENT_ID          Entra app (client) id
+#   MS_CLIENT_SECRET      Entra client secret
+#   REDIRECT_URI          optional, e.g. https://evertri-slack-status.<subdomain>.workers.dev/callback

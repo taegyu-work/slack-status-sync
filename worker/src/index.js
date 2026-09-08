@@ -1,4 +1,5 @@
-// Cloudflare Worker: per-employee Slack connect flow + token store (KV).
+// Cloudflare Worker: per-employee Slack connect flow + token store (KV)
+// + the 5-minute cron that overlays "회의 중" and does ALL Slack writes.
 //
 //   GET  /                      -> "Add to Slack" page
 //   GET  /callback?code=...     -> exchange code, save tokens to KV, success page
@@ -6,10 +7,20 @@
 //   POST /connections/:uid      -> [bearer SYNC_SECRET] merge-patch one connection
 //   GET  /roster                -> [bearer SYNC_SECRET] roster CSV text
 //   PUT  /roster                -> [bearer SYNC_SECRET] replace roster CSV
-//   POST /report                -> [bearer SYNC_SECRET] store the latest run log
+//   POST /report                -> [bearer SYNC_SECRET] store the leave-job run log
+//   cron */5 (KST work hours)   -> read each connection's `day` (written by the
+//                                  GitHub leave job), check their own calendar for
+//                                  a live meeting, resolve priority, set Slack.
 //
 // KV binding: `KV`  (namespace created with `wrangler kv namespace create ...`)
-// Secrets: SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, REDIRECT_URI, SYNC_SECRET
+// Secrets: SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SYNC_SECRET,
+//          MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET  (REDIRECT_URI optional)
+
+import { getGraphToken, getMeetingsForMany } from '../../src/graph.mjs';
+import { resolveStatus, dayMeansAway, tzToday } from '../../src/resolve.mjs';
+import * as slack from '../../src/slack.mjs';
+import MAP from '../../config/status-map.json';
+import SETTINGS from '../../config/settings.json';
 
 const USER_SCOPES = 'users.profile:write,users.profile:read,users:read,users:read.email,dnd:write';
 
@@ -51,7 +62,162 @@ export default {
       return html(`<h1>오류</h1><p>${escapeHtml(e.message)}</p><p><a href="/">다시 시도</a></p>`, 500);
     }
   },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(
+      runMeetingSync(env).catch((e) => console.error('scheduled:', e.stack || e.message)),
+    );
+  },
 };
+
+/* ---------- cron: meeting overlay + Slack writes ---------- */
+
+const KNOWN_TEXTS = new Set(Object.values(MAP).map((v) => v.text));
+// Cap the number of connections we do Slack calls for per run, to stay well
+// under the Workers free-plan subrequest budget when many people transition at
+// 09:00 at once. The leftover clears on the next 5-min tick.
+const MAX_TX = 10;
+
+function statusIsOurs(curText, managed) {
+  if (!curText) return true;
+  if (managed && curText === managed.text) return true;
+  return KNOWN_TEXTS.has(curText);
+}
+
+async function freshToken(env, uid, c) {
+  if (!c.expires_at || c.expires_at > Date.now() + 120_000) return c.access_token;
+  if (!c.refresh_token) return c.access_token;
+  const r = await slack.refresh(env.SLACK_CLIENT_ID, env.SLACK_CLIENT_SECRET, c.refresh_token);
+  await patchConnection(env, uid, {
+    access_token: r.access_token,
+    refresh_token: r.refresh_token,
+    expires_at: Date.now() + r.expires_in * 1000,
+  });
+  return r.access_token;
+}
+
+async function runMeetingSync(env) {
+  const now = new Date();
+
+  // Only act during KST working hours (Mon–Fri ~06:00–20:00). Outside that,
+  // status_expiration and the DND snooze end time clear everything on their own,
+  // so there is nothing for the writer to do. (Cron fires every 5 min regardless
+  // because Cloudflare's cron parser rejects hour/DOW-range expressions.)
+  const kst = new Date(now.getTime() + 9 * 3_600_000);
+  const dow = kst.getUTCDay(); // 0=Sun … 6=Sat
+  const hour = kst.getUTCHours();
+  if (dow === 0 || dow === 6 || hour < 6 || hour >= 20) {
+    await env.KV.put('report:meetings:latest', JSON.stringify({
+      job: 'meetings', ranAt: now.toISOString(), idle: 'outside KST working hours',
+    }));
+    return;
+  }
+
+  const today = tzToday(now, SETTINGS.timezone);
+  const dayLookaheadMs = (SETTINGS.lookaheadMinutes || 30) * 60_000;
+  const meetLookaheadMs = (SETTINGS.meetings?.lookaheadMinutes || 2) * 60_000;
+  const meetingsOn = SETTINGS.meetings?.enabled !== false;
+
+  const conns = await listConnections(env);
+  const entries = Object.entries(conns);
+  if (!entries.length) {
+    await env.KV.put('report:meetings:latest', JSON.stringify({
+      job: 'meetings', ranAt: now.toISOString(), idle: 'no connections',
+    }));
+    return;
+  }
+
+  const gtok = await getGraphToken(env.MS_TENANT_ID, env.MS_CLIENT_ID, env.MS_CLIENT_SECRET);
+
+  // Look up meetings only for people with an email who aren't already "away"
+  // for the whole day (연차/반차/외근) — that always wins, so skip the call.
+  const meetingEmails = meetingsOn
+    ? entries
+        .filter(([, c]) => c.email && !dayMeansAway(c.day || null, now, dayLookaheadMs))
+        .map(([, c]) => c.email.toLowerCase())
+    : [];
+
+  let meetings = new Map();
+  let mErrors = new Map();
+  if (meetingEmails.length) {
+    ({ meetings, errors: mErrors } = await getMeetingsForMany(
+      gtok, meetingEmails, now, meetLookaheadMs,
+      { tz: SETTINGS.graphTimezone, requireAttendeeOrOnline: SETTINGS.meetings?.requireAttendeeOrOnline !== false },
+    ));
+  }
+
+  const report = {
+    job: 'meetings', ranAt: now.toISOString(), date: today,
+    connections: entries.length, meetingLookups: meetingEmails.length,
+    transitions: [], skipped: 0, capped: 0, errors: [],
+  };
+  for (const [mb, e] of mErrors) report.errors.push({ mailbox: mb, error: e });
+
+  let tx = 0;
+  for (const [uid, c] of entries) {
+    const meeting = c.email ? meetings.get(c.email.toLowerCase()) || null : null;
+    const chosen = resolveStatus(c.day || null, meeting, now, dayLookaheadMs, MAP['회의']);
+
+    // Steady state — what we last set still matches. No Slack call.
+    if (chosen && c.managed &&
+        c.managed.key === chosen.key &&
+        c.managed.date === today &&
+        c.managed.toISO === chosen.toISO) { report.skipped++; continue; }
+
+    // Nothing wanted and nothing we set today: the status (if any) already
+    // expired on its own overnight — just drop the stale marker, no Slack call.
+    if (!chosen && (!c.managed || c.managed.date !== today)) {
+      if (c.managed) await patchConnection(env, uid, { managed: null });
+      else report.skipped++;
+      continue;
+    }
+
+    if (tx >= MAX_TX) { report.capped++; continue; }
+    tx++;
+
+    try {
+      const token = await freshToken(env, uid, c);
+      const prof = await slack.getProfile(token);
+      const curText = prof.status_text || '';
+
+      if (!statusIsOurs(curText, c.managed)) {
+        if (c.managed) await patchConnection(env, uid, { managed: null });
+        report.transitions.push({ uid, action: 'skip-manual', curText });
+        continue;
+      }
+
+      if (chosen) {
+        const endMs = new Date(chosen.toISO).getTime();
+        await slack.setStatus(token, chosen.text, chosen.emoji, Math.floor(endMs / 1000));
+        if (chosen.dnd) {
+          await slack.setSnooze(token, Math.max(1, Math.round((endMs - Date.now()) / 60_000))).catch(() => {});
+        } else if (c.managed?.dnd) {
+          await slack.endSnooze(token).catch(() => {});
+        }
+        await patchConnection(env, uid, {
+          managed: {
+            key: chosen.key, date: today, toISO: chosen.toISO,
+            text: chosen.text, emoji: chosen.emoji, dnd: !!chosen.dnd,
+            source: chosen.source, at: now.toISOString(),
+          },
+        });
+        report.transitions.push({ uid, action: 'set', key: chosen.key, source: chosen.source, until: chosen.toISO });
+      } else {
+        await slack.clearStatus(token);
+        if (c.managed?.dnd) await slack.endSnooze(token).catch(() => {});
+        await patchConnection(env, uid, { managed: null });
+        report.transitions.push({ uid, action: 'clear' });
+      }
+    } catch (e) {
+      report.errors.push({ uid, error: e.code || e.message });
+      if (['token_revoked', 'invalid_auth', 'account_inactive', 'not_authed'].includes(e.code)) {
+        await patchConnection(env, uid, { needs_reauth: now.toISOString() }).catch(() => {});
+      }
+    }
+  }
+
+  await env.KV.put('report:meetings:latest', JSON.stringify(report));
+}
 
 function authed(req, env) {
   const h = req.headers.get('authorization') || '';

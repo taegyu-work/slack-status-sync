@@ -1,18 +1,21 @@
-name: slack-status-sync
+name: slack-status-sync (leave feed)
 
 on:
   schedule:
-    # GitHub cron is UTC. KST = UTC+9 (no DST). Every 5 min so "회의 중"
-    # tracks meeting boundaries closely. This repo is public → unlimited
-    # Actions minutes, so frequency is free.
-    # ~07:00–09:00 KST on Mon–Fri  -> 22:00–23:59 UTC Sun–Thu
-    - cron: '*/5 22-23 * * 0-4'
-    # ~09:00–18:55 KST on Mon–Fri  -> 00:00–09:55 UTC Mon–Fri
-    - cron: '*/5 0-9 * * 1-5'
+    # Leave feed only: reads the hr@ calendar, writes each connected person's
+    # day-level status (재택/연차/반차/외근) to KV as `day`. It does NOT touch
+    # Slack — the Cloudflare Worker cron reads `day`, overlays "회의 중", and
+    # does all the Slack writes. Leave rarely changes, so every 15 min is plenty,
+    # and GitHub's flaky scheduler no longer matters for meeting latency.
+    # GitHub cron is UTC. KST = UTC+9 (no DST).
+    # ~07:00–09:00 KST Mon–Fri  -> 22:00–23:59 UTC Sun–Thu
+    - cron: '*/15 22-23 * * 0-4'
+    # ~09:00–19:00 KST Mon–Fri  -> 00:00–10:00 UTC Mon–Fri
+    - cron: '*/15 0-10 * * 1-5'
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run — log intended changes, touch nothing'
+        description: 'Dry run — log intended changes, write nothing to KV'
         type: boolean
         default: false
 
@@ -36,8 +39,6 @@ jobs:
           MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
           MS_CLIENT_SECRET: ${{ secrets.MS_CLIENT_SECRET }}
           MS_CALENDAR_MAILBOX: ${{ secrets.MS_CALENDAR_MAILBOX }}
-          SLACK_CLIENT_ID: ${{ secrets.SLACK_CLIENT_ID }}
-          SLACK_CLIENT_SECRET: ${{ secrets.SLACK_CLIENT_SECRET }}
           WORKER_URL: ${{ secrets.WORKER_URL }}
           SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
       - uses: actions/upload-artifact@v4

@@ -26,7 +26,7 @@ test('picks the active accepted meeting', () =>
     async () => {
       const m = await getMeetingNow('t', 'x@y.com', now, 120000, {});
       assert.ok(m);
-      assert.equal(m.to.toISOString(), new Date('2026-09-07T15:00:00+09:00').toISOString());
+      assert.equal(m.toISO, new Date('2026-09-07T15:00:00+09:00').toISOString());
     },
   ));
 
@@ -57,7 +57,7 @@ test('back-to-back: keeps the one ending latest', () =>
     ],
     async () => {
       const m = await getMeetingNow('t', 'x@y.com', now, 120000, {});
-      assert.equal(m.to.toISOString(), new Date('2026-09-07T16:00:00+09:00').toISOString());
+      assert.equal(m.toISO, new Date('2026-09-07T16:00:00+09:00').toISOString());
     },
   ));
 

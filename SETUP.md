@@ -47,9 +47,11 @@ admin consent), a Cloudflare account (free), and a GitHub account.
 
 ---
 
-## 3. Cloudflare Worker + KV
+## 3. Cloudflare Worker + KV + cron
 
-Free Cloudflare account, then from `worker/`:
+The Worker does the connect flow, the KV store, **and** the 5-min cron that
+overlays 회의 중 and writes every Slack status — so it needs the Graph secrets
+too. Free Cloudflare account, then from `worker/`:
 
 ```bash
 npm install
@@ -58,10 +60,18 @@ npx wrangler kv namespace create <name>        # paste the id into worker/wrangl
 npx wrangler secret put SLACK_CLIENT_ID
 npx wrangler secret put SLACK_CLIENT_SECRET
 npx wrangler secret put SYNC_SECRET             # long random string; save it
+npx wrangler secret put MS_TENANT_ID           # from step 2
+npx wrangler secret put MS_CLIENT_ID           # from step 2
+npx wrangler secret put MS_CLIENT_SECRET       # from step 2
 npx wrangler deploy                             # prints https://<name>.<sub>.workers.dev
 npx wrangler secret put REDIRECT_URI            # https://<name>.<sub>.workers.dev/callback
 npx wrangler deploy
 ```
+
+`worker/wrangler.toml` carries `[triggers] crons = ["*/5 * * * *"]` — `wrangler
+deploy` registers it. The cron fires every 5 min around the clock; the
+`scheduled()` handler bails outside KST working hours (Mon–Fri ~06:00–20:00) —
+adjust that guard in `worker/src/index.js` if your day differs.
 
 Then set the real `…/callback` in **Slack → OAuth & Permissions → Redirect URLs**.
 Visit the Worker URL — you should see the "Add to Slack" page.
@@ -72,13 +82,13 @@ Visit the Worker URL — you should see the "Add to Slack" page.
 
 1. Create a repo, push this folder. **Public is fine** — there's no PII in it
    (the roster lives in the Worker's KV, not the repo).
-2. **Settings → Secrets and variables → Actions**:
+2. **Settings → Secrets and variables → Actions** (the leave feed only — no
+   Slack secrets here, the Worker does the Slack writes):
 
    | Secret | From |
    |---|---|
    | `MS_TENANT_ID` `MS_CLIENT_ID` `MS_CLIENT_SECRET` | step 2 |
    | `MS_CALENDAR_MAILBOX` | the HR calendar's mailbox address |
-   | `SLACK_CLIENT_ID` `SLACK_CLIENT_SECRET` | step 1 |
    | `WORKER_URL` | `https://<name>.<sub>.workers.dev` |
    | `SYNC_SECRET` | the same string set on the Worker |
 
@@ -106,12 +116,15 @@ Re-run `npm run roster:push` whenever the roster changes.
 
 ## 6. Test, then roll out
 
-1. **Actions → slack-status-sync → Run workflow → tick `dry_run`.** Check the
-   run log / `last-run` artifact: `events` > 0, `unresolved` empty (fix names in
-   `roster.csv` + re-push), `connections` grows as people connect.
-2. Connect your own Slack via the Worker URL, then run **without** dry-run while
-   you have a calendar entry or a meeting. Confirm your status changes.
-3. Roll out — send staff the Worker URL:
+1. **Actions → slack-status-sync (leave feed) → Run workflow → tick `dry_run`.**
+   Check the run log / `last-run` artifact: `events` > 0, `unresolved` empty (fix
+   names in `roster.csv` + re-push), `connections` grows as people connect.
+2. Run it **without** dry-run so `conn:<id>.day` gets written.
+3. Connect your own Slack via the Worker URL. Within 5 min the Worker cron should
+   set your status from `day` (and 회의 중 if you're in a meeting). Force a run
+   now with `npx wrangler tail` open, or:
+   `npx wrangler kv key get --binding KV report:meetings:latest`.
+4. Roll out — send staff the Worker URL:
 
    > **[인사팀] Slack 근무상태 자동 표시 – 1분 설정**
    > 부서 일정(재택·연차·반차·외근)과 회의 일정에 맞춰 Slack 상태가 자동으로
@@ -120,9 +133,9 @@ Re-run `npm run roster:push` whenever the roster changes.
    > 👉 https://<name>.<sub>.workers.dev
    > 직접 설정한 상태는 건드리지 않습니다.
 
-4. The cron runs every 5 min during KST working hours. Watch `report:latest` in
-   KV (`npx wrangler kv key get --binding KV report:latest`) or the `last-run`
-   artifacts for the first week.
+5. Two schedules now run during KST working hours: the GitHub leave feed every
+   15 min (`report:latest`, `last-run` artifact) and the Worker cron every 5 min
+   (`report:meetings:latest`). Watch both for the first week.
 
 ---
 
@@ -136,5 +149,8 @@ Re-run `npm run roster:push` whenever the roster changes.
 | `errors: […calendarView…]` | Graph consent missing, wrong `MS_CALENDAR_MAILBOX`, or an access policy excludes it |
 | `…: 401` from the Worker | `SYNC_SECRET` mismatch (Worker vs GitHub vs `.env`) |
 | status set but no DND | `dnd:write` scope missing — re-add, users reconnect |
-| everyone `skipped: "manual status"` | something else is setting statuses (e.g. the native Slack calendar integration still connected) |
-| nothing runs on schedule | no repo commits for 60 days (GitHub pauses crons) — push any commit |
+| `transitions: [{action:"skip-manual"}]` | that person set their own status text — the writer backs off until it's cleared |
+| `report:meetings` has `capped > 0` every run | more than `MAX_TX` transitions per tick sustained — raise `MAX_TX` in `worker/src/index.js` (watch the free-plan subrequest budget) |
+| meetings never show 회의 중 | Graph app lacks all-mailbox `Calendars.Read`, or `meetings.enabled` is false, or `MS_*` secrets missing on the **Worker** |
+| leave feed writes `day` but Slack never changes | Worker cron not deployed / `[triggers] crons` missing / `MS_CLIENT_SECRET` not set on the Worker |
+| leave feed never runs on schedule | no repo commits for 60 days (GitHub pauses crons) — push any commit |
