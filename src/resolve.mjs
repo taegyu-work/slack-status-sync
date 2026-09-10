@@ -53,6 +53,14 @@ export function resolveStatus(day, meeting, now, dayLookaheadMs, meetingConf) {
   return null;
 }
 
+/**
+ * Graph's calendarView returns events that merely *touch* the query window, so
+ * an all-day event for yesterday (end = today 00:00) still comes back in today's
+ * query. True only if [start, end) genuinely overlaps [dayStart, dayEnd).
+ */
+export const spanOverlapsDay = (start, end, dayStart, dayEnd) =>
+  new Date(start) < new Date(dayEnd) && new Date(end) > new Date(dayStart);
+
 /** Whether the meeting check can be skipped for this connection. */
 export function dayMeansAway(day, now, dayLookaheadMs) {
   if (!day) return false;

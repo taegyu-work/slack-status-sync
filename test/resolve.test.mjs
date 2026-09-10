@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveStatus, dayMeansAway, DAY_YIELDS_TO_MEETING } from '../src/resolve.mjs';
+import { resolveStatus, dayMeansAway, spanOverlapsDay, DAY_YIELDS_TO_MEETING } from '../src/resolve.mjs';
 
 const NOW = new Date('2026-09-07T14:00:00+09:00');
 const LOOK = 30 * 60_000; // 30 min day lookahead
@@ -76,6 +76,32 @@ test('expired day status + live meeting -> 회의', () => {
   };
   assert.equal(resolveStatus(past, meetingUntil('15:00'), NOW, LOOK, MEET).key, '회의');
   assert.equal(resolveStatus(past, null, NOW, LOOK, MEET), null);
+});
+
+test('spanOverlapsDay: yesterday all-day event does not count for today', () => {
+  // today = 2026-09-10 KST
+  const dayStart = new Date('2026-09-10T00:00:00+09:00');
+  const dayEnd = new Date('2026-09-11T00:00:00+09:00');
+  // all-day event for Sep 9 only: start 09-09, end 09-10 (exclusive) — touches boundary
+  assert.equal(
+    spanOverlapsDay(new Date('2026-09-09T00:00:00+09:00'), new Date('2026-09-10T00:00:00+09:00'), dayStart, dayEnd),
+    false,
+  );
+  // all-day event for Sep 10
+  assert.equal(
+    spanOverlapsDay(new Date('2026-09-10T00:00:00+09:00'), new Date('2026-09-11T00:00:00+09:00'), dayStart, dayEnd),
+    true,
+  );
+  // multi-day Sep 9–11
+  assert.equal(
+    spanOverlapsDay(new Date('2026-09-09T00:00:00+09:00'), new Date('2026-09-12T00:00:00+09:00'), dayStart, dayEnd),
+    true,
+  );
+  // tomorrow's event
+  assert.equal(
+    spanOverlapsDay(new Date('2026-09-11T00:00:00+09:00'), new Date('2026-09-12T00:00:00+09:00'), dayStart, dayEnd),
+    false,
+  );
 });
 
 test('dayMeansAway: 연차 yes, 재택 no, null no, expired no', () => {

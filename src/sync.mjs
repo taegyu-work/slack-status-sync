@@ -10,7 +10,7 @@ import { getGraphToken, getCalendarView } from './graph.mjs';
 import { classify, statusKey } from './classify.mjs';
 import { parseRoster } from './roster.mjs';
 import { createStore } from './store.mjs';
-import { tzToday, wall } from './resolve.mjs';
+import { tzToday, wall, spanOverlapsDay } from './resolve.mjs';
 
 const cfgUrl = (n) => new URL(`../config/${n}`, import.meta.url);
 const CFG = JSON.parse(await readFile(cfgUrl('settings.json'), 'utf8'));
@@ -66,6 +66,11 @@ async function main() {
   for (const ev of events) {
     const c = classify(ev.subject, ev);
     if (!c) continue;
+    // Graph's calendarView returns an event that only *touches* the window
+    // boundary — an all-day event for yesterday (end = today 00:00) comes back
+    // in today's query. Keep only all-day events that actually cover today.
+    if (c.isAllDay && ev.start?.dateTime && ev.end?.dateTime &&
+        !spanOverlapsDay(evTime(ev.start), evTime(ev.end), dayStart, dayEnd)) continue;
     let person = roster.resolve(c.name, c.team);
     if (!person) {
       const orgEmail = ev.organizer?.emailAddress?.address?.toLowerCase();

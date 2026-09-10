@@ -126,7 +126,7 @@ Re-run `npm run roster:push` whenever the roster changes.
    `npx wrangler kv key get --binding KV report:meetings:latest`.
 4. Roll out — send staff the Worker URL:
 
-   > **[인사팀] Slack 근무상태 자동 표시 – 1분 설정**
+   > **[경영기획팀] Slack 근무상태 자동 표시 – 1분 설정**
    > 부서 일정(재택·연차·반차·외근)과 회의 일정에 맞춰 Slack 상태가 자동으로
    > 표시됩니다. 아래 링크에서 **본인 Slack 계정을 한 번만 연결**해주세요.
    > (이메일 읽기 권한 승인 필요)
