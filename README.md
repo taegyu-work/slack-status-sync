@@ -102,3 +102,8 @@ See **[SETUP.md](SETUP.md)**.
   outside that, `status_expiration` and the DND snooze end time clear things.
 - **Manual statuses win.** If a user sets their own status text, the writer
   leaves it and drops its `managed` marker for that person.
+- **Don't run the official Outlook Calendar Slack app's status feature too.**
+  Both write the same status field on a timer and will overwrite each other —
+  and its "부재중" / "Working elsewhere" text isn't one this app recognises, so
+  the writer reads it as a manual status and backs off. Each user turns off
+  "update my status" in that app (or removes it).
