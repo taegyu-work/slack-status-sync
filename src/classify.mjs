@@ -5,7 +5,7 @@
 const IGNORE = /회의실|\[회의|교육\s*\[/;
 
 // External field work (외근): CRA site visits, monitoring, hospital/university visits.
-const EXTERNAL_KEYWORDS = /(병원|의원|의료원|대학교|대학|보건소|센터|클리닉|캠퍼스|병설|의과학|연구소)/;
+const EXTERNAL_KEYWORDS = /(병원|의원|의료원|대학교|대학|보건소|센터|클리닉|캠퍼스|병설|의과학|연구소|식약처|식품의약품안전처)/;
 const VISIT_TOKENS = /(?:^|[\s,(/])(MV|OV|SV|IMV|COV|SIV|PSSV|PSV|CSV|IV|SIV|모니터링|점검|방문)(?:$|[\s,)/])/i;
 
 const TIME_RANGE = /\((\d{1,2}):(\d{2})\s*[~\-–]\s*(\d{1,2}):(\d{2})\)/;

@@ -94,7 +94,11 @@ See **[SETUP.md](SETUP.md)**.
 - **Meetings** count only if: not all-day, `showAs: busy`, you accepted/organise
   it, and it has another attendee, a booked room, or an online-meeting link
   (skips focus-time blocks).
-- **Multi-person 외근 events** only set the first name / the `(이름)` in parens.
+- **외근 detection** is subject-text only: the literal word `외근` (staff are
+  asked to prefix titles with `[외근]`), or — as a fallback — an institution
+  word (병원·대학·보건소·식약처·…), a CRA visit token (MV/OV/모니터링/방문/…),
+  or a title with ≥ 2 commas. Multi-person 외근 events only set the first name /
+  the `(이름)` in parens.
 - **`반반차`** is treated like `반차` for the parsed window.
 - **Config lives in the repo** — `status-map.json` / `settings.json` changes reach
   the Worker only on `wrangler deploy`, and the GitHub job on push.

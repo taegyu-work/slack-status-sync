@@ -20,6 +20,9 @@ const cases = [
   ['액티메디 명지병원 오전 외근 w/대표님 (정서우)',                { type: '외근', part: null }],
   ['김건소 정서우 오후 외근 티알',                                 { type: '외근', part: null }],
   ['서지원, iCReaT 교육',                                          null],
+  ['GS NIDS 심사자 임상 교육 2차',                                 null],
+  ['[외근] 오유리, 식약처 대면심사',                               { type: '외근', part: null }],
+  ['정서우, 식약처 방문',                                          { type: '외근', part: null }],
   ['강지훈 선임 (BD&S팀) - 반반차(14:00~16:00)',                   { type: '반차', part: 'PM' }],
   ['김태성 수석 (임상시험 사업팀) - 연차',                         { type: '연차', part: null }],
 ];
