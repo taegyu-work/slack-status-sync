@@ -202,10 +202,15 @@ async function runMeetingSync(env) {
     const chosen = resolveStatus(c.day || null, meeting, now, dayLookaheadMs, MAP['회의']);
 
     // Steady state — what we last set still matches. No Slack call.
+    // Comparing `text` too (not just key/date/toISO) means a config or code
+    // change that alters wording (e.g. appendSubject) — or someone editing the
+    // live calendar event's subject mid-meeting — refreshes on the very next
+    // tick instead of waiting for the status to next transition.
     if (chosen && c.managed &&
         c.managed.key === chosen.key &&
         c.managed.date === today &&
-        c.managed.toISO === chosen.toISO) { report.skipped++; continue; }
+        c.managed.toISO === chosen.toISO &&
+        c.managed.text === chosen.text) { report.skipped++; continue; }
 
     // Nothing wanted and nothing we set today: the status (if any) already
     // expired on its own overnight — just drop the stale marker, no Slack call.
