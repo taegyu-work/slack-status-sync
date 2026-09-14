@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, statusKey, extractName, extractTeam } from '../src/classify.mjs';
+import { classify, statusKey, extractName, extractTeam, extractAllNames } from '../src/classify.mjs';
 
 // Real subjects taken from the shared calendar screenshot.
 const cases = [
@@ -46,6 +46,28 @@ test('name / team extraction', () => {
   assert.equal(extractName('이승주(CO), LUCES-KOR-2023, OV 고려대병원'), '이승주');
   assert.equal(extractTeam('차광민 (DM/STAT팀) - 반차(13:30~17:30)'), 'DM/STAT팀');
   assert.equal(extractTeam('김태성, 연차'), '');
+});
+
+test('extractAllNames: multi-person 외근 with no comma/paren format', () => {
+  const names = extractAllNames('김건소 정서우 오후 외근 티알');
+  assert.ok(names.includes('김건소'));
+  assert.ok(names.includes('정서우'));
+  // non-name tokens are allowed through — callers filter via roster.resolve()
+  assert.ok(names.includes('외근'));
+});
+
+test('extractAllNames: paren-tagged name still found', () => {
+  const names = extractAllNames('액티메디 명지병원 오전 외근 w/대표님 (정서우)');
+  assert.ok(names.includes('정서우'));
+});
+
+test('extractAllNames: a long place name yields no false-positive slice', () => {
+  // "고려대학교안암병원" is 9 syllables — no 2-4 char slice of it sits at a
+  // space/comma/paren boundary on both sides, so it contributes no candidates.
+  assert.deepEqual(
+    extractAllNames('이승주(CO), LUCES-KOR-2023, OV 고려대학교안암병원'),
+    ['이승주'],
+  );
 });
 
 test('statusKey', () => {

@@ -7,7 +7,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { getGraphToken, getCalendarView } from './graph.mjs';
-import { classify, statusKey } from './classify.mjs';
+import { classify, statusKey, extractAllNames } from './classify.mjs';
 import { parseRoster } from './roster.mjs';
 import { createStore } from './store.mjs';
 import { tzToday, wall, spanOverlapsDay } from './resolve.mjs';
@@ -27,6 +27,31 @@ function env(k) {
 }
 
 const evTime = (x) => new Date(x.dateTime.replace(/\.\d+$/, '') + OFFSET);
+
+/**
+ * Who a classified event applies to — usually one person, but a 외근 title
+ * sometimes lists several attendees with no comma/paren format the single-name
+ * extractor can parse ("김건소 정서우 오후 외근 티알"). For 외근, try every
+ * plausible name token against the roster and keep whatever actually resolves;
+ * non-name tokens (오후, 외근, 티알, project codes, …) just fail to resolve and
+ * are dropped for free. Falls back to the single-name/organizer path — same as
+ * every other event type — when that finds no one.
+ */
+function resolvePeople(c, ev, roster, mailbox) {
+  if (c.type === '외근') {
+    const seen = new Set();
+    const people = extractAllNames(ev.subject || '')
+      .map((n) => roster.resolve(n, c.team))
+      .filter((p) => p && !seen.has(p.email) && seen.add(p.email));
+    if (people.length) return people;
+  }
+  let person = roster.resolve(c.name, c.team);
+  if (!person) {
+    const orgEmail = ev.organizer?.emailAddress?.address?.toLowerCase();
+    if (orgEmail && orgEmail !== mailbox) person = { email: orgEmail };
+  }
+  return person ? [person] : [];
+}
 
 function computeWindow(c, ev, today) {
   const { start, end, halfDaySplit } = CFG.workday;
@@ -71,22 +96,20 @@ async function main() {
     // in today's query. Keep only all-day events that actually cover today.
     if (c.isAllDay && ev.start?.dateTime && ev.end?.dateTime &&
         !spanOverlapsDay(evTime(ev.start), evTime(ev.end), dayStart, dayEnd)) continue;
-    let person = roster.resolve(c.name, c.team);
-    if (!person) {
-      const orgEmail = ev.organizer?.emailAddress?.address?.toLowerCase();
-      if (orgEmail && orgEmail !== mailbox) person = { email: orgEmail };
-    }
-    if (!person) { unresolved.push(ev.subject); continue; }
+    const people = resolvePeople(c, ev, roster, mailbox);
+    if (!people.length) { unresolved.push(ev.subject); continue; }
 
     const key = statusKey(c.type, c.part);
     const conf = MAP[key] || MAP[c.type];
     const win = computeWindow(c, ev, today);
-    const prev = desired.get(person.email);
-    if (!prev || win.from < new Date(prev.fromISO)) {
-      desired.set(person.email, {
-        key, text: conf.text, emoji: conf.emoji, dnd: !!conf.dnd,
-        fromISO: win.from.toISOString(), toISO: win.to.toISOString(), subject: ev.subject,
-      });
+    for (const person of people) {
+      const prev = desired.get(person.email);
+      if (!prev || win.from < new Date(prev.fromISO)) {
+        desired.set(person.email, {
+          key, text: conf.text, emoji: conf.emoji, dnd: !!conf.dnd,
+          fromISO: win.from.toISOString(), toISO: win.to.toISOString(), subject: ev.subject,
+        });
+      }
     }
   }
 

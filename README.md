@@ -66,11 +66,31 @@ per run spills large 09:00 transitions onto the next tick.
 | `worker/src/index.js` | Cloudflare Worker — connect flow + KV store + sync API + **cron writer** |
 | `worker/wrangler.toml` | KV binding + `[triggers] crons` |
 | `.github/workflows/sync.yml` | the 15-min leave-feed cron |
-| `test/` | classifier, meeting-filter, and priority-resolver tests |
+| `test/` | classifier, roster, meeting-filter, and priority-resolver tests |
 
 ## Setup
 
 See **[SETUP.md](SETUP.md)**.
+
+## Admin dashboard & failure alerts
+
+`GET /admin?key=ADMIN_KEY` — a read-only page (bookmark it) showing:
+
+- how many minutes since the leave feed and the Worker cron last ran (⚠️ if stale)
+- the most recent errors from both
+- everyone connected: today's status, what Slack currently shows, whether they need to reconnect
+- everyone in the roster who **hasn't** connected yet — the list to chase during rollout
+
+`ADMIN_KEY` is a separate secret from `SYNC_SECRET` (which can *write* connection
+data) — a leaked admin link only exposes read-only names/emails/status, not write
+access. Set it with `wrangler secret put ADMIN_KEY`; without it, `/admin` is
+inaccessible from a plain browser (only `Authorization: Bearer SYNC_SECRET` works).
+
+If `ALERT_WEBHOOK_URL` is set (a Slack Incoming Webhook), the cron posts there —
+cooldown-limited so a persistent failure nags, not spams — when: it crashes
+(e.g. the Graph client secret expired), a person's Slack connection breaks
+(`token_revoked` / `invalid_auth` → also flips their `needs_reauth`), or a run
+ends with any other errors.
 
 ## Day-to-day
 
@@ -79,10 +99,12 @@ See **[SETUP.md](SETUP.md)**.
 - **Change hours / half-day split / disable meetings:** edit `config/settings.json`, commit, `npx wrangler deploy`.
 - **Test the leave feed safely:** Actions tab → *Run workflow* → tick **dry_run**.
 - **See what happened:**
+  - the admin dashboard (`/admin?key=...`) for a human-readable view
   - leave feed → `last-run` artifact, or `report:latest` in KV
   - meeting writer → `report:meetings:latest` in KV (`npx wrangler kv key get --binding KV report:meetings:latest`)
 - **Someone needs to reconnect:** their `conn:<id>.needs_reauth` gets a timestamp
-  after a `token_revoked` / `invalid_auth`. Send them the Worker URL.
+  after a `token_revoked` / `invalid_auth` — shows up on `/admin` and (if
+  `ALERT_WEBHOOK_URL` is set) as a Slack alert. Send them the Worker URL.
 
 ## Known limits / assumptions
 
@@ -97,8 +119,9 @@ See **[SETUP.md](SETUP.md)**.
 - **외근 detection** is subject-text only: the literal word `외근` (staff are
   asked to prefix titles with `[외근]`), or — as a fallback — an institution
   word (병원·대학·보건소·식약처·…), a CRA visit token (MV/OV/모니터링/방문/…),
-  or a title with ≥ 2 commas. Multi-person 외근 events only set the first name /
-  the `(이름)` in parens.
+  or a title with ≥ 2 commas. Multi-person 외근 titles without commas/parens
+  (e.g. `김건소 정서우 오후 외근 티알`) are handled by trying every 2-4 syllable
+  Hangul token against the roster and keeping whatever resolves.
 - **`반반차`** is treated like `반차` for the parsed window.
 - **Config lives in the repo** — `status-map.json` / `settings.json` changes reach
   the Worker only on `wrangler deploy`, and the GitHub job on push.

@@ -25,6 +25,7 @@ export function parseRoster(text) {
   if (iName < 0 || iEmail < 0) throw new Error('roster must have "name" and "email" columns');
 
   const byName = new Map();
+  const entries = [];
   for (const line of rows) {
     const c = line.split(',').map((x) => x.trim());
     const entry = {
@@ -33,6 +34,7 @@ export function parseRoster(text) {
       email: (c[iEmail] || '').toLowerCase(),
     };
     if (!entry.name || !entry.email) continue;
+    entries.push(entry);
     const key = norm(entry.name);
     if (!byName.has(key)) byName.set(key, []);
     byName.get(key).push(entry);
@@ -40,6 +42,7 @@ export function parseRoster(text) {
 
   return {
     size: byName.size,
+    entries, // every row, for listing (e.g. "who hasn't connected yet")
     resolve(name, team) {
       const cands = byName.get(norm(name)) || [];
       if (cands.length === 1) return cands[0];

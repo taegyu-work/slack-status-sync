@@ -76,6 +76,30 @@ adjust that guard in `worker/src/index.js` if your day differs.
 Then set the real `…/callback` in **Slack → OAuth & Permissions → Redirect URLs**.
 Visit the Worker URL — you should see the "Add to Slack" page.
 
+### Optional: admin dashboard + failure alerts
+
+```bash
+npx wrangler secret put ADMIN_KEY               # any long random string
+npx wrangler deploy
+```
+
+Then bookmark `https://<name>.<sub>.workers.dev/admin?key=<that string>` — a
+read-only page showing who's connected, who isn't, last sync times, and recent
+errors. Don't share the link; anyone with it can read (not write) everyone's
+connection status.
+
+For Slack alerts when something breaks (a broken per-user connection, or the
+cron crashing outright): in your Slack app go to **Incoming Webhooks** → toggle
+on → **Add New Webhook to Workspace** → pick a channel (a DM to yourself works)
+→ copy the webhook URL, then:
+
+```bash
+npx wrangler secret put ALERT_WEBHOOK_URL
+npx wrangler deploy
+```
+
+Leave either secret unset to skip that feature — both are optional.
+
 ---
 
 ## 4. GitHub repo + secrets
@@ -143,7 +167,8 @@ Re-run `npm run roster:push` whenever the roster changes.
 
 5. Two schedules now run during KST working hours: the GitHub leave feed every
    15 min (`report:latest`, `last-run` artifact) and the Worker cron every 5 min
-   (`report:meetings:latest`). Watch both for the first week.
+   (`report:meetings:latest`). Watch both for the first week — or just watch
+   `/admin?key=...` if you set `ADMIN_KEY`, which shows who's still missing.
 
 ---
 
@@ -160,5 +185,8 @@ Re-run `npm run roster:push` whenever the roster changes.
 | `transitions: [{action:"skip-manual"}]` | that person set their own status text — the writer backs off until it's cleared |
 | `report:meetings` has `capped > 0` every run | more than `MAX_TX` transitions per tick sustained — raise `MAX_TX` in `worker/src/index.js` (watch the free-plan subrequest budget) |
 | meetings never show 회의 중 | Graph app lacks all-mailbox `Calendars.Read`, or `meetings.enabled` is false, or `MS_*` secrets missing on the **Worker** |
+| `/admin` returns 401 | `?key=` doesn't match `ADMIN_KEY` — or `ADMIN_KEY` was never set (bearer `SYNC_SECRET` still works) |
+| no Slack alerts arrive | `ALERT_WEBHOOK_URL` unset, or the webhook was removed/regenerated in the Slack app — re-copy it |
+| a 외근 event tags the wrong / no one | multi-name titles resolve every 2-4 syllable token against the roster — an unlisted or misspelled name won't match; check `unresolved` |
 | leave feed writes `day` but Slack never changes | Worker cron not deployed / `[triggers] crons` missing / `MS_CLIENT_SECRET` not set on the Worker |
 | leave feed never runs on schedule | no repo commits for 60 days (GitHub pauses crons) — push any commit |

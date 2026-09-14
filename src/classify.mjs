@@ -29,6 +29,22 @@ export function extractTeam(subject) {
 }
 
 /**
+ * Every plausible Korean-name token (2-4 Hangul syllables) in a subject —
+ * used for 외근 events that list several attendees without a comma/paren
+ * format `extractName` can parse (e.g. "김건소 정서우 오후 외근 티알"). This
+ * is deliberately loose: callers resolve each candidate against the roster
+ * and drop whatever doesn't match a real person (오후/외근/티알 above), so a
+ * few false-positive tokens here cost nothing.
+ */
+export function extractAllNames(subject) {
+  const s = (subject || '').trim();
+  const out = new Set();
+  for (const m of s.matchAll(/\(([가-힣]{2,4})\)/g)) out.add(m[1]);
+  for (const m of s.matchAll(/(?:^|[\s,])([가-힣]{2,4})(?=[\s,(]|$)/g)) out.add(m[1]);
+  return [...out];
+}
+
+/**
  * @param {string} subject  raw event subject
  * @param {{isAllDay?: boolean}} [event]
  * @returns {null | {type:'재택'|'연차'|'반차'|'외근', part:'AM'|'PM'|null,

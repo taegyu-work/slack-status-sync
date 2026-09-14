@@ -23,3 +23,6 @@ crons = ["*/5 * * * *"]
 #   MS_CLIENT_ID          Entra app (client) id
 #   MS_CLIENT_SECRET      Entra client secret
 #   REDIRECT_URI          optional, e.g. https://evertri-slack-status.<subdomain>.workers.dev/callback
+#   ADMIN_KEY             optional — long random string, enables GET /admin?key=... in a browser
+#   ALERT_WEBHOOK_URL     optional — a Slack Incoming Webhook URL; the cron posts here on a
+#                         crash or a broken per-user connection. Unset = alerting is just skipped.

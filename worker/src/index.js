@@ -3,6 +3,8 @@
 //
 //   GET  /                      -> "Add to Slack" page
 //   GET  /callback?code=...     -> exchange code, save tokens to KV, success page
+//   GET  /admin?key=ADMIN_KEY   -> read-only dashboard: who's connected/missing,
+//                                  last sync ages, recent errors
 //   GET  /connections           -> [bearer SYNC_SECRET] { [slackUserId]: conn }
 //   POST /connections/:uid      -> [bearer SYNC_SECRET] merge-patch one connection
 //   GET  /roster                -> [bearer SYNC_SECRET] roster CSV text
@@ -11,13 +13,18 @@
 //   cron */5 (KST work hours)   -> read each connection's `day` (written by the
 //                                  GitHub leave job), check their own calendar for
 //                                  a live meeting, resolve priority, set Slack.
+//                                  Posts to ALERT_WEBHOOK_URL (if set) on a crash
+//                                  or a broken per-user connection.
 //
 // KV binding: `KV`  (namespace created with `wrangler kv namespace create ...`)
 // Secrets: SLACK_CLIENT_ID, SLACK_CLIENT_SECRET, SYNC_SECRET,
 //          MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET  (REDIRECT_URI optional)
+//          ADMIN_KEY (optional — enables GET /admin from a browser)
+//          ALERT_WEBHOOK_URL (optional — Slack Incoming Webhook for failure alerts)
 
 import { getGraphToken, getMeetingsForMany } from '../../src/graph.mjs';
 import { resolveStatus, dayMeansAway, tzToday } from '../../src/resolve.mjs';
+import { parseRoster } from '../../src/roster.mjs';
 import * as slack from '../../src/slack.mjs';
 import MAP from '../../config/status-map.json';
 import SETTINGS from '../../config/settings.json';
@@ -30,6 +37,10 @@ export default {
     try {
       if (req.method === 'GET' && url.pathname === '/') return html(landing(env, url.origin));
       if (req.method === 'GET' && url.pathname === '/callback') return html(await handleCallback(req, env, url));
+      if (req.method === 'GET' && url.pathname === '/admin') {
+        if (!authedAdmin(req, env, url)) return new Response('unauthorized', { status: 401 });
+        return html(await renderAdmin(env), 200);
+      }
 
       // --- authenticated sync API ---
       if (/^\/(connections|roster|report)/.test(url.pathname)) {
@@ -65,7 +76,10 @@ export default {
 
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
-      runMeetingSync(env).catch((e) => console.error('scheduled:', e.stack || e.message)),
+      runMeetingSync(env).catch((e) => {
+        console.error('scheduled:', e.stack || e.message);
+        return alertOnce(env, 'crash', `🔥 Slack 근무상태 Worker 크론이 실패했습니다:\n${e.message}`, 30 * 60_000);
+      }),
     );
   },
 };
@@ -82,6 +96,30 @@ function statusIsOurs(curText, managed) {
   if (!curText) return true;
   if (managed && curText === managed.text) return true;
   return KNOWN_TEXTS.has(curText);
+}
+
+// Best-effort failure alerts to a Slack Incoming Webhook (ALERT_WEBHOOK_URL).
+// Silently a no-op if that secret isn't set — alerting is opt-in.
+async function alert(env, text) {
+  if (!env.ALERT_WEBHOOK_URL) return;
+  try {
+    await fetch(env.ALERT_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  } catch { /* alerting must never break the sync run */ }
+}
+
+// Same, but at most once per `cooldownMs` per `key` (KV-tracked) — so a
+// condition that keeps failing every 5-min tick doesn't spam the channel.
+async function alertOnce(env, key, text, cooldownMs = 60 * 60_000) {
+  if (!env.ALERT_WEBHOOK_URL) return;
+  const kvKey = `alert:${key}`;
+  const last = Number((await env.KV.get(kvKey)) || 0);
+  if (Date.now() - last < cooldownMs) return;
+  await env.KV.put(kvKey, String(Date.now()), { expirationTtl: 7 * 86_400 });
+  await alert(env, text);
 }
 
 async function freshToken(env, uid, c) {
@@ -212,8 +250,22 @@ async function runMeetingSync(env) {
       report.errors.push({ uid, error: e.code || e.message });
       if (['token_revoked', 'invalid_auth', 'account_inactive', 'not_authed'].includes(e.code)) {
         await patchConnection(env, uid, { needs_reauth: now.toISOString() }).catch(() => {});
+        await alertOnce(
+          env, `reauth:${uid}`,
+          `🔌 ${c.real_name || c.email || uid} 님의 Slack 연동이 끊어졌어요 (${e.code}). 재연결 안내 부탁드립니다: https://evertri-slack-status.evertri-hr.workers.dev`,
+          4 * 3_600_000,
+        );
       }
     }
+  }
+
+  if (report.errors.length) {
+    const lines = report.errors.slice(0, 5).map((e) => `• ${e.uid || e.mailbox || '?'}: ${e.error}`);
+    await alertOnce(
+      env, 'errors',
+      `⚠️ Slack 근무상태: 이번 실행에서 오류 ${report.errors.length}건\n${lines.join('\n')}`,
+      60 * 60_000,
+    );
   }
 
   await env.KV.put('report:meetings:latest', JSON.stringify(report));
@@ -222,6 +274,14 @@ async function runMeetingSync(env) {
 function authed(req, env) {
   const h = req.headers.get('authorization') || '';
   return h === `Bearer ${env.SYNC_SECRET}` && !!env.SYNC_SECRET;
+}
+
+// /admin is meant to be opened directly in a browser (bookmarked with ?key=),
+// so it accepts a query-string key too — a separate, read-only secret from
+// SYNC_SECRET (which can rewrite connection data) so a leaked admin link only
+// exposes roster names/emails/status, never write access.
+function authedAdmin(req, env, url) {
+  return authed(req, env) || (!!env.ADMIN_KEY && url.searchParams.get('key') === env.ADMIN_KEY);
 }
 
 const redirectUri = (env, origin) => env.REDIRECT_URI || `${origin}/callback`;
@@ -248,6 +308,73 @@ async function patchConnection(env, uid, patch) {
   const merged = { ...existing, ...patch, slackUserId: uid };
   await env.KV.put(key, JSON.stringify(merged));
   return { ok: true };
+}
+
+/* ---------- admin dashboard (read-only) ---------- */
+
+async function renderAdmin(env) {
+  const [conns, rosterCsv, reportLeave, reportMeet] = await Promise.all([
+    listConnections(env),
+    env.KV.get('roster'),
+    env.KV.get('report:latest', 'json'),
+    env.KV.get('report:meetings:latest', 'json'),
+  ]);
+  const roster = parseRoster(rosterCsv || 'name,team,email\n');
+  const connList = Object.values(conns).sort((a, b) => (a.real_name || '').localeCompare(b.real_name || '', 'ko'));
+  const connectedEmails = new Set(connList.map((c) => (c.email || '').toLowerCase()).filter(Boolean));
+  const notConnected = roster.entries.filter((p) => !connectedEmails.has(p.email.toLowerCase()));
+
+  const ageMin = (iso) => (iso ? Math.round((Date.now() - new Date(iso).getTime()) / 60_000) : null);
+  const staleBadge = (iso, limitMin) => {
+    const age = ageMin(iso);
+    if (age == null) return '<span class="tag warn">기록 없음</span>';
+    if (age > limitMin) return `<span class="tag warn">${age}분 전 ⚠️</span>`;
+    return `<span class="tag ok">${age}분 전</span>`;
+  };
+
+  const connRows = connList.map((c) => `
+    <tr>
+      <td>${escapeHtml(c.real_name || '(이름 없음)')}</td>
+      <td>${escapeHtml(c.email || '')}</td>
+      <td>${escapeHtml(c.day?.key || '—')}</td>
+      <td>${escapeHtml(c.managed?.key || '—')}</td>
+      <td>${c.needs_reauth ? '<span class="tag warn">재연결 필요</span>' : '<span class="tag ok">정상</span>'}</td>
+    </tr>`).join('');
+
+  const missingRows = notConnected.map((p) => `
+    <tr><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.team)}</td><td>${escapeHtml(p.email)}</td></tr>`).join('');
+
+  const allErrors = [...(reportLeave?.errors || []), ...(reportMeet?.errors || [])].slice(0, 10);
+  const errRows = allErrors.map((e) => `<li>${escapeHtml(JSON.stringify(e))}</li>`).join('') || '<li class="muted">없음</li>';
+
+  return `
+  <h1>EverTri 근무상태 · 관리자</h1>
+
+  <section>
+    <h2>동기화 상태</h2>
+    <p>리브 피드 (GitHub, 15분 간격): ${staleBadge(reportLeave?.ranAt, 30)}</p>
+    <p>Worker 크론 (5분 간격): ${staleBadge(reportMeet?.ranAt, 15)}</p>
+    <h3>최근 오류 (최대 10건)</h3>
+    <ul>${errRows}</ul>
+  </section>
+
+  <section>
+    <h2>연결됨 — ${connList.length}명</h2>
+    <table>
+      <thead><tr><th>이름</th><th>이메일</th><th>오늘 상태</th><th>Slack 현재</th><th>연동</th></tr></thead>
+      <tbody>${connRows || '<tr><td colspan="5" class="muted">없음</td></tr>'}</tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>미연결 — 로스터엔 있지만 Slack 미연동 (${notConnected.length}명)</h2>
+    <table>
+      <thead><tr><th>이름</th><th>팀</th><th>이메일</th></tr></thead>
+      <tbody>${missingRows || '<tr><td colspan="3" class="muted">전원 연결됨 🎉</td></tr>'}</tbody>
+    </table>
+  </section>
+
+  <p class="muted">이 페이지는 새로고침 시 최신 상태를 다시 읽어옵니다. 새는 것을 방지하기 위해 이 링크는 공유하지 마세요.</p>`;
 }
 
 /* ---------- Slack connect flow ---------- */
@@ -331,12 +458,23 @@ function html(inner, status = 200) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EverTri Slack 상태 연동</title>
 <style>
-  body{font-family:system-ui,-apple-system,'Malgun Gothic',sans-serif;max-width:32rem;
-       margin:4rem auto;padding:0 1.25rem;line-height:1.65;color:#1a1a1a;background:#fafafa}
+  body{font-family:system-ui,-apple-system,'Malgun Gothic',sans-serif;max-width:44rem;
+       margin:3rem auto;padding:0 1.25rem;line-height:1.65;color:#1a1a1a;background:#fafafa}
   h1{font-size:1.35rem;margin-bottom:.5rem}
+  h2{font-size:1.05rem;margin:1.75rem 0 .5rem}
+  h3{font-size:.85rem;margin:1rem 0 .25rem;color:#444}
   .btn{display:inline-block;background:#4A154B;color:#fff;padding:.8rem 1.5rem;border-radius:8px;
        text-decoration:none;font-weight:600;margin:.5rem 0}
   .muted{color:#666;font-size:.9rem;margin-top:2rem}
+  section{margin-bottom:1.5rem}
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid #e5e5e5}
+  th{color:#666;font-weight:600;font-size:.75rem;text-transform:uppercase}
+  .tag{display:inline-block;padding:.1rem .55rem;border-radius:999px;font-size:.78rem}
+  .tag.ok{background:#e2f2ef;color:#0b7c6e}
+  .tag.warn{background:#f9efdb;color:#8f5b00}
+  ul{padding-left:1.1rem}
+  li{font-size:.82rem;margin-bottom:.25rem}
 </style>
 ${inner}`,
     { status, headers: { 'content-type': 'text/html; charset=utf-8' } },
