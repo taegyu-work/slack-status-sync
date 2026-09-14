@@ -58,8 +58,8 @@ function meetingViewParams(now, lookaheadMs) {
 
 /**
  * Reduce a person's calendarView to the meeting they're in *right now* —
- * { fromISO, toISO } for the currently-active accepted meeting that ends
- * latest (so back-to-back meetings keep the status up), or null.
+ * { fromISO, toISO, subject } for the currently-active accepted meeting that
+ * ends latest (so back-to-back meetings keep the status up), or null.
  *
  * Counts only if: not all-day, showAs=busy, the user accepted/organises it,
  * and (when requireAttendeeOrOnline) it has another attendee, a room booked,
@@ -67,7 +67,7 @@ function meetingViewParams(now, lookaheadMs) {
  */
 export function pickMeeting(events, now, lookaheadMs, requireAttendeeOrOnline = true) {
   const parse = (x) => new Date(x.dateTime.replace(/\.\d+$/, '') + '+09:00');
-  let best = null;
+  let best = null; // { to: Date, subject: string }
   for (const ev of events || []) {
     if (ev.isAllDay) continue;
     if (ev.showAs !== 'busy') continue;
@@ -79,9 +79,9 @@ export function pickMeeting(events, now, lookaheadMs, requireAttendeeOrOnline = 
     const from = parse(ev.start);
     const to = parse(ev.end);
     if (now < new Date(from.getTime() - lookaheadMs) || now >= to) continue;
-    if (!best || to > best) best = to;
+    if (!best || to > best.to) best = { to, subject: ev.subject || '' };
   }
-  return best ? { fromISO: null, toISO: best.toISOString() } : null;
+  return best ? { fromISO: null, toISO: best.to.toISOString(), subject: best.subject } : null;
 }
 
 /** Single-mailbox meeting lookup (used by tests). */

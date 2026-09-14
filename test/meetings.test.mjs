@@ -22,11 +22,12 @@ const base = {
 
 test('picks the active accepted meeting', () =>
   withFetch(
-    [{ ...base, start: dt('14:00'), end: dt('15:00') }],
+    [{ ...base, start: dt('14:00'), end: dt('15:00'), subject: '분기 리뷰' }],
     async () => {
       const m = await getMeetingNow('t', 'x@y.com', now, 120000, {});
       assert.ok(m);
       assert.equal(m.toISO, new Date('2026-09-07T15:00:00+09:00').toISOString());
+      assert.equal(m.subject, '분기 리뷰');
     },
   ));
 
@@ -49,15 +50,16 @@ test('skips solo focus-time (no attendee, not online) when required', () =>
     ),
   ));
 
-test('back-to-back: keeps the one ending latest', () =>
+test('back-to-back: keeps the one ending latest (and its subject)', () =>
   withFetch(
     [
-      { ...base, start: dt('14:00'), end: dt('15:00') },
-      { ...base, start: dt('14:00'), end: dt('16:00') },
+      { ...base, start: dt('14:00'), end: dt('15:00'), subject: '회의 A' },
+      { ...base, start: dt('14:00'), end: dt('16:00'), subject: '회의 B' },
     ],
     async () => {
       const m = await getMeetingNow('t', 'x@y.com', now, 120000, {});
       assert.equal(m.toISO, new Date('2026-09-07T16:00:00+09:00').toISOString());
+      assert.equal(m.subject, '회의 B');
     },
   ));
 

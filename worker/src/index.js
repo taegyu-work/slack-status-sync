@@ -87,6 +87,10 @@ export default {
 /* ---------- cron: meeting overlay + Slack writes ---------- */
 
 const KNOWN_TEXTS = new Set(Object.values(MAP).map((v) => v.text));
+// 외근/회의 texts can carry a calendar subject ("외근 중 · 고려대병원" — see
+// resolve.mjs appendSubject), so the base-text fallback below also needs a
+// prefix check, not just an exact match.
+const KNOWN_PREFIXES = [...KNOWN_TEXTS].map((t) => `${t} · `);
 // Cap the number of connections we do Slack calls for per run, to stay well
 // under the Workers free-plan subrequest budget when many people transition at
 // 09:00 at once. The leftover clears on the next 5-min tick.
@@ -95,7 +99,8 @@ const MAX_TX = 10;
 function statusIsOurs(curText, managed) {
   if (!curText) return true;
   if (managed && curText === managed.text) return true;
-  return KNOWN_TEXTS.has(curText);
+  if (KNOWN_TEXTS.has(curText)) return true;
+  return KNOWN_PREFIXES.some((p) => curText.startsWith(p));
 }
 
 // Best-effort failure alerts to a Slack Incoming Webhook (ALERT_WEBHOOK_URL).

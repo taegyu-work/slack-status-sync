@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveStatus, dayMeansAway, spanOverlapsDay, DAY_YIELDS_TO_MEETING } from '../src/resolve.mjs';
+import { resolveStatus, dayMeansAway, spanOverlapsDay, appendSubject, DAY_YIELDS_TO_MEETING } from '../src/resolve.mjs';
 
 const NOW = new Date('2026-09-07T14:00:00+09:00');
 const LOOK = 30 * 60_000; // 30 min day lookahead
@@ -102,6 +102,47 @@ test('spanOverlapsDay: yesterday all-day event does not count for today', () => 
     spanOverlapsDay(new Date('2026-09-11T00:00:00+09:00'), new Date('2026-09-12T00:00:00+09:00'), dayStart, dayEnd),
     false,
   );
+});
+
+test('appendSubject: appends with a separator, no-op on empty subject', () => {
+  assert.equal(appendSubject('외근 중', '고려대병원'), '외근 중 · 고려대병원');
+  assert.equal(appendSubject('외근 중', ''), '외근 중');
+  assert.equal(appendSubject('외근 중', null), '외근 중');
+  assert.equal(appendSubject('외근 중', '  '), '외근 중');
+});
+
+test('appendSubject: truncates so the combined text never exceeds 100 chars (Slack rejects longer)', () => {
+  const long = '가'.repeat(120);
+  const out = appendSubject('외근 중', long);
+  assert.ok(out.length <= 100, `length was ${out.length}`);
+  assert.ok(out.endsWith('…'));
+  assert.ok(out.startsWith('외근 중 · '));
+});
+
+test('resolveStatus: 외근 status text includes the calendar subject', () => {
+  const day = {
+    key: '외근', text: '외근 중', emoji: ':car:', dnd: false,
+    fromISO: '2026-09-07T09:00:00+09:00', toISO: '2026-09-07T18:00:00+09:00',
+    subject: '액티메디 명지병원 오전 외근 w/대표님 (정서우)',
+  };
+  const r = resolveStatus(day, null, NOW, LOOK, MEET);
+  assert.equal(r.text, '외근 중 · 액티메디 명지병원 오전 외근 w/대표님 (정서우)');
+});
+
+test('resolveStatus: 회의 status text includes the meeting subject', () => {
+  const meeting = { fromISO: null, toISO: '2026-09-07T15:00:00+09:00', subject: '분기 리뷰' };
+  const r = resolveStatus(null, meeting, NOW, LOOK, MEET);
+  assert.equal(r.text, '회의 중 · 분기 리뷰');
+});
+
+test('resolveStatus: 연차/반차 status text does NOT get a subject appended (just repeats own name)', () => {
+  const day = {
+    key: '연차', text: '연차', emoji: ':palm_tree:', dnd: true,
+    fromISO: '2026-09-07T09:00:00+09:00', toISO: '2026-09-07T18:00:00+09:00',
+    subject: '이태규 선임 (경영기획본부) - 연차',
+  };
+  const r = resolveStatus(day, null, NOW, LOOK, MEET);
+  assert.equal(r.text, '연차');
 });
 
 test('dayMeansAway: 연차 yes, 재택 no, null no, expired no', () => {
