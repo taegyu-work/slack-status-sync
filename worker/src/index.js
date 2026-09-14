@@ -199,7 +199,7 @@ async function runMeetingSync(env) {
   let tx = 0;
   for (const [uid, c] of entries) {
     const meeting = c.email ? meetings.get(c.email.toLowerCase()) || null : null;
-    const chosen = resolveStatus(c.day || null, meeting, now, dayLookaheadMs, MAP['회의']);
+    const chosen = resolveStatus(c.day || null, meeting, now, dayLookaheadMs, MAP['회의'], !!c.showSubject);
 
     // Steady state — what we last set still matches. No Slack call.
     // Comparing `text` too (not just key/date/toISO) means a config or code
@@ -394,11 +394,22 @@ function landing(env, origin) {
   u.searchParams.set('client_id', env.SLACK_CLIENT_ID);
   u.searchParams.set('user_scope', USER_SCOPES);
   u.searchParams.set('redirect_uri', redirectUri(env, origin));
+
+  // Opt-in: showing the calendar subject (site name / meeting title) in the
+  // status text is off by default. Round-tripped through Slack's OAuth
+  // `state` param back to /callback, which stores it on the connection.
+  const uDetail = new URL(u);
+  uDetail.searchParams.set('state', 'detail');
+
   return `
     <h1>EverTri 근무상태 · Slack 연동</h1>
     <p>아래 버튼으로 본인 Slack 계정을 <b>한 번만</b> 연결하면, 부서 일정
     (재택 · 연차 · 반차 · 외근)에 따라 Slack 상태가 자동으로 표시됩니다.</p>
     <p><a class="btn" href="${u.toString()}">Add to Slack</a></p>
+    <p class="muted">외근·회의 상태에 장소나 회의 제목까지 표시하고 싶다면
+    <a href="${uDetail.toString()}">상세 정보 포함으로 연결</a>하세요
+    (기본은 "외근 중" / "회의 중"만 표시됩니다). 이미 연결하셨어도 원하는
+    버튼으로 다시 연결하면 설정이 바뀝니다.</p>
     <p class="muted">연결을 해제하려면 인사팀에 알려주세요.</p>`;
 }
 
@@ -429,6 +440,7 @@ async function handleCallback(req, env, url) {
   const p = info.ok ? info.user.profile || {} : {};
   const email = (p.email || '').toLowerCase();
   const realName = p.real_name || p.display_name || info.user?.real_name || '';
+  const showSubject = url.searchParams.get('state') === 'detail';
 
   await env.KV.put(`conn:${u.id}`, JSON.stringify({
     slackUserId: u.id,
@@ -439,6 +451,7 @@ async function handleCallback(req, env, url) {
     refresh_token: u.refresh_token || null,
     expires_at: u.expires_in ? Date.now() + u.expires_in * 1000 : null,
     team_id: j.team?.id || null,
+    showSubject,
     managed: null,
     needs_reauth: null,
     updated_at: new Date().toISOString(),
@@ -448,6 +461,9 @@ async function handleCallback(req, env, url) {
     <h1>연결 완료 ✅</h1>
     <p><b>${escapeHtml(email || u.id)}</b> 계정이 연결되었습니다.</p>
     <p>이제 부서 일정에 따라 Slack 상태가 자동으로 설정됩니다. 이 창은 닫으셔도 됩니다.</p>
+    <p class="muted">${showSubject
+      ? '외근·회의 상태에 장소·회의 제목이 함께 표시됩니다.'
+      : '외근·회의 상태는 기본 문구만 표시됩니다 (상세 정보 미포함).'}</p>
     ${email ? '' : '<p class="muted">이메일을 읽지 못했습니다. 인사팀에 문의해주세요.</p>'}`;
 }
 

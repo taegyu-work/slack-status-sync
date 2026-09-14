@@ -122,11 +122,15 @@ ends with any other errors.
   or a title with ≥ 2 commas. Multi-person 외근 titles without commas/parens
   (e.g. `김건소 정서우 오후 외근 티알`) are handled by trying every 2-4 syllable
   Hangul token against the roster and keeping whatever resolves.
-- **외근 / 회의 status text includes the calendar subject** — e.g. `외근 중 ·
-  고려대병원` or `회의 중 · 분기 리뷰` — via `appendSubject()` in `resolve.mjs`,
+- **Showing the calendar subject in 외근/회의 status text is opt-in, per
+  person** — e.g. `외근 중 · 고려대병원` or `회의 중 · 분기 리뷰` instead of
+  the bare base text. Off by default (`conn.showSubject`, unset ⇒ false); a
+  person turns it on by (re)connecting via the "상세 정보 포함으로 연결" link
+  on the landing page, which round-trips through Slack OAuth's `state` param
+  to `/callback`. `appendSubject()` in `resolve.mjs` builds the text,
   truncated to fit Slack's 100-char `status_text` limit (Slack rejects longer
-  ones outright, no silent truncation). 재택/연차/반차 don't get this — their
-  subject is just the person's own name, which would be redundant.
+  ones outright, no silent truncation). 재택/연차/반차 never get this even
+  when opted in — their subject is just the person's own name.
 - **`반반차`** is treated like `반차` for the parsed window.
 - **Config lives in the repo** — `status-map.json` / `settings.json` changes reach
   the Worker only on `wrangler deploy`, and the GitHub job on push.

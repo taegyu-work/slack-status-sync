@@ -164,6 +164,10 @@ Re-run `npm run roster:push` whenever the roster changes.
    > ⚠️ 기존 **Outlook Calendar** Slack 앱을 쓰고 계신 분은, 그 앱의
    > **상태 자동 변경 기능을 꺼주세요** (Slack → Outlook Calendar 앱 → 홈 탭
    > → "상태 업데이트" 해제). 두 개가 같이 켜져 있으면 상태가 서로 덮어씁니다.
+   >
+   > 💡 원하시면 외근·회의 상태에 장소·회의 제목까지 표시할 수 있습니다 —
+   > 연결 페이지의 "상세 정보 포함으로 연결" 링크를 이용해주세요. 기본은
+   > 표시하지 않습니다.
 
 5. Two schedules now run during KST working hours: the GitHub leave feed every
    15 min (`report:latest`, `last-run` artifact) and the Worker cron every 5 min

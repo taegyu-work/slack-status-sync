@@ -47,9 +47,11 @@ export function appendSubject(text, subject) {
  * @param now  Date
  * @param dayLookaheadMs  how early a day-status window may activate
  * @param meetingConf  status-map entry for "회의" ({text,emoji,dnd})
+ * @param showSubject  opt-in per connection (conn.showSubject) — off by
+ *   default, so no one's status text changes unless they turned it on
  * @returns { key,text,emoji,dnd,toISO,subject,source } | null
  */
-export function resolveStatus(day, meeting, now, dayLookaheadMs, meetingConf) {
+export function resolveStatus(day, meeting, now, dayLookaheadMs, meetingConf, showSubject = false) {
   const dayActive =
     day &&
     now >= new Date(new Date(day.fromISO).getTime() - dayLookaheadMs) &&
@@ -58,7 +60,7 @@ export function resolveStatus(day, meeting, now, dayLookaheadMs, meetingConf) {
 
   const dayChosen = () => ({
     key: day.key,
-    text: SHOW_SUBJECT.has(day.key) ? appendSubject(day.text, day.subject) : day.text,
+    text: (showSubject && SHOW_SUBJECT.has(day.key)) ? appendSubject(day.text, day.subject) : day.text,
     emoji: day.emoji, dnd: !!day.dnd,
     toISO: day.toISO, subject: day.subject || day.key, source: 'leave',
   });
@@ -66,7 +68,9 @@ export function resolveStatus(day, meeting, now, dayLookaheadMs, meetingConf) {
   if (dayIsAway) return dayChosen();
   if (meeting) {
     return {
-      key: '회의', text: appendSubject(meetingConf.text, meeting.subject), emoji: meetingConf.emoji, dnd: !!meetingConf.dnd,
+      key: '회의',
+      text: showSubject ? appendSubject(meetingConf.text, meeting.subject) : meetingConf.text,
+      emoji: meetingConf.emoji, dnd: !!meetingConf.dnd,
       toISO: meeting.toISO, subject: meeting.subject || '회의', source: 'meeting',
     };
   }

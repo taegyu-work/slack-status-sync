@@ -119,29 +119,40 @@ test('appendSubject: truncates so the combined text never exceeds 100 chars (Sla
   assert.ok(out.startsWith('외근 중 · '));
 });
 
-test('resolveStatus: 외근 status text includes the calendar subject', () => {
+test('resolveStatus: subject is off by default — showSubject not passed', () => {
   const day = {
     key: '외근', text: '외근 중', emoji: ':car:', dnd: false,
     fromISO: '2026-09-07T09:00:00+09:00', toISO: '2026-09-07T18:00:00+09:00',
     subject: '액티메디 명지병원 오전 외근 w/대표님 (정서우)',
   };
-  const r = resolveStatus(day, null, NOW, LOOK, MEET);
+  assert.equal(resolveStatus(day, null, NOW, LOOK, MEET).text, '외근 중');
+  const meeting = { fromISO: null, toISO: '2026-09-07T15:00:00+09:00', subject: '분기 리뷰' };
+  assert.equal(resolveStatus(null, meeting, NOW, LOOK, MEET).text, '회의 중');
+});
+
+test('resolveStatus: opted in (showSubject=true) -> 외근 status text includes the calendar subject', () => {
+  const day = {
+    key: '외근', text: '외근 중', emoji: ':car:', dnd: false,
+    fromISO: '2026-09-07T09:00:00+09:00', toISO: '2026-09-07T18:00:00+09:00',
+    subject: '액티메디 명지병원 오전 외근 w/대표님 (정서우)',
+  };
+  const r = resolveStatus(day, null, NOW, LOOK, MEET, true);
   assert.equal(r.text, '외근 중 · 액티메디 명지병원 오전 외근 w/대표님 (정서우)');
 });
 
-test('resolveStatus: 회의 status text includes the meeting subject', () => {
+test('resolveStatus: opted in (showSubject=true) -> 회의 status text includes the meeting subject', () => {
   const meeting = { fromISO: null, toISO: '2026-09-07T15:00:00+09:00', subject: '분기 리뷰' };
-  const r = resolveStatus(null, meeting, NOW, LOOK, MEET);
+  const r = resolveStatus(null, meeting, NOW, LOOK, MEET, true);
   assert.equal(r.text, '회의 중 · 분기 리뷰');
 });
 
-test('resolveStatus: 연차/반차 status text does NOT get a subject appended (just repeats own name)', () => {
+test('resolveStatus: even opted in, 연차/반차 status text does NOT get a subject appended (just repeats own name)', () => {
   const day = {
     key: '연차', text: '연차', emoji: ':palm_tree:', dnd: true,
     fromISO: '2026-09-07T09:00:00+09:00', toISO: '2026-09-07T18:00:00+09:00',
     subject: '이태규 선임 (경영기획본부) - 연차',
   };
-  const r = resolveStatus(day, null, NOW, LOOK, MEET);
+  const r = resolveStatus(day, null, NOW, LOOK, MEET, true);
   assert.equal(r.text, '연차');
 });
 
