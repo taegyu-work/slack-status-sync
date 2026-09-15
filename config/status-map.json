@@ -6,6 +6,9 @@
   "반차":    { "text": "반차",      "emoji": ":palm_tree:",        "dnd": true  },
   "반차_AM": { "text": "오전 반차",  "emoji": ":palm_tree:",        "dnd": true  },
   "반차_PM": { "text": "오후 반차",  "emoji": ":palm_tree:",        "dnd": true  },
+  "반반차":    { "text": "반반차",     "emoji": ":palm_tree:",     "dnd": true  },
+  "반반차_AM": { "text": "오전 반반차", "emoji": ":palm_tree:",     "dnd": true  },
+  "반반차_PM": { "text": "오후 반반차", "emoji": ":palm_tree:",     "dnd": true  },
   "외근":    { "text": "외근 중",    "emoji": ":car:",              "dnd": false },
   "회의":    { "text": "회의 중",    "emoji": ":calendar:",         "dnd": false }
 }

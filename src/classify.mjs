@@ -47,7 +47,7 @@ export function extractAllNames(subject) {
 /**
  * @param {string} subject  raw event subject
  * @param {{isAllDay?: boolean}} [event]
- * @returns {null | {type:'재택'|'연차'|'반차'|'외근', part:'AM'|'PM'|null,
+ * @returns {null | {type:'재택'|'연차'|'반차'|'반반차'|'외근', part:'AM'|'PM'|null,
  *                   time:{sh,sm,eh,em}|null, name:string|null, team:string,
  *                   isAllDay:boolean}}
  */
@@ -61,7 +61,10 @@ export function classify(subject, event = {}) {
   let type = null;
   if (/재택/.test(s)) type = '재택';
   else if (/연차/.test(s)) type = '연차';
-  else if (/반차|반반차/.test(s)) type = '반차';
+  // 반반차 (quarter day) must be checked before 반차 — "반반차" contains
+  // "반차" as a substring, so the plain regex would misclassify it.
+  else if (/반반차/.test(s)) type = '반반차';
+  else if (/반차/.test(s)) type = '반차';
   else if (/외근/.test(s)) type = '외근';
   else if (!IGNORE.test(s)) {
     // No explicit keyword and not an internal meeting / room booking:
@@ -91,6 +94,7 @@ export function classify(subject, event = {}) {
 /** Map a classification to a status-map key. */
 export function statusKey(type, part) {
   if (type === '반차') return part === 'AM' ? '반차_AM' : part === 'PM' ? '반차_PM' : '반차';
+  if (type === '반반차') return part === 'AM' ? '반반차_AM' : part === 'PM' ? '반반차_PM' : '반반차';
   if (type === '재택' && part) return part === 'AM' ? '재택_AM' : '재택_PM';
   return type; // 재택 / 연차 / 외근
 }

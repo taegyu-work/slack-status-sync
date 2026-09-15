@@ -131,7 +131,10 @@ ends with any other errors.
   truncated to fit Slack's 100-char `status_text` limit (Slack rejects longer
   ones outright, no silent truncation). 재택/연차/반차 never get this even
   when opted in — their subject is just the person's own name.
-- **`반반차`** is treated like `반차` for the parsed window.
+- **`반반차`** (quarter day) is its own type — `반반차`/`반반차_AM`/`반반차_PM`
+  in `status-map.json`, distinct from `반차` — since the hr@ calendar uses it
+  for real, shorter blocks (e.g. `(14:00~16:00)`) and showing it as a normal
+  half-day 반차 status would overstate how long the person's away.
 - **Config lives in the repo** — `status-map.json` / `settings.json` changes reach
   the Worker only on `wrangler deploy`, and the GitHub job on push.
 - **Off-hours cleanup is automatic** — the writer only runs ~07:00–19:00 KST;

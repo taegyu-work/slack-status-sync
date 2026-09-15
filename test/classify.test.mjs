@@ -23,8 +23,10 @@ const cases = [
   ['GS NIDS 심사자 임상 교육 2차',                                 null],
   ['[외근] 오유리, 식약처 대면심사',                               { type: '외근', part: null }],
   ['정서우, 식약처 방문',                                          { type: '외근', part: null }],
-  ['강지훈 선임 (BD&S팀) - 반반차(14:00~16:00)',                   { type: '반차', part: 'PM' }],
+  ['강지훈 선임 (BD&S팀) - 반반차(14:00~16:00)',                   { type: '반반차', part: 'PM' }],
   ['김태성 수석 (임상시험 사업팀) - 연차',                         { type: '연차', part: null }],
+  ['김태성, 반반차',                                               { type: '반반차', part: null }],
+  ['강지훈 선임 (BD&S팀) - 반반차(09:00~11:00)',                   { type: '반반차', part: 'AM' }],
 ];
 
 for (const [subject, expected] of cases) {
@@ -74,5 +76,13 @@ test('statusKey', () => {
   assert.equal(statusKey('재택', null), '재택');
   assert.equal(statusKey('재택', 'PM'), '재택_PM');
   assert.equal(statusKey('반차', 'AM'), '반차_AM');
+  assert.equal(statusKey('반반차', null), '반반차');
+  assert.equal(statusKey('반반차', 'AM'), '반반차_AM');
+  assert.equal(statusKey('반반차', 'PM'), '반반차_PM');
   assert.equal(statusKey('외근', null), '외근');
+});
+
+test('반반차 is classified distinctly from 반차, not collapsed into it', () => {
+  assert.equal(classify('홍길동, 반반차(10:00~12:00)').type, '반반차');
+  assert.equal(classify('홍길동, 반차(10:00~14:00)').type, '반차');
 });

@@ -29,6 +29,10 @@ test('반차 beats a concurrent meeting', () => {
   assert.equal(resolveStatus(dayAt('반차_PM', true), meetingUntil('15:00'), NOW, LOOK, MEET).key, '반차_PM');
 });
 
+test('반반차 also beats a concurrent meeting (treated as away, like 반차)', () => {
+  assert.equal(resolveStatus(dayAt('반반차_PM', true), meetingUntil('15:00'), NOW, LOOK, MEET).key, '반반차_PM');
+});
+
 test('재택 yields to a meeting, then reverts when it ends', () => {
   const during = resolveStatus(dayAt('재택'), meetingUntil('15:00'), NOW, LOOK, MEET);
   assert.equal(during.key, '회의');
