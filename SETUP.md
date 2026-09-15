@@ -157,9 +157,6 @@ Re-run `npm run roster:push` whenever the roster changes.
    > 👉 https://<name>.<sub>.workers.dev
    > 직접 설정한 상태는 건드리지 않습니다.
    >
-   > ✍️ 연차·반차·반반차 이모티콘(`:yeoncha:` `:bancha:` `:banbancha:`)은
-   > 손글씨로 직접 그렸습니다.
-   >
    > 📌 **외근 일정을 만들 때는 제목 맨 앞에 `[외근]` 을 넣어주세요.**
    > (예: `[외근] 홍길동, 식약처 대면심사`) — 병원·대학·식약처 등 방문지 이름이
    > 있으면 자동 인식되지만, `[외근]` 을 붙이면 확실합니다.
