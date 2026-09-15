@@ -1,27 +1,25 @@
-# Renders a Korean word as a bold, full-bleed Slack custom emoji — no ring,
-# no handwriting, no padding to speak of. Slack shows custom status emoji at
-# roughly 16-20px inline, and at that size anything that isn't "big bold
-# glyphs filling the whole square" turns to mush:
-#   - handwritten text (cursive strokes) was illegible even before shrinking
-#   - a pill/ring outline around the text (badge style) ate enough of the
-#     128x128 canvas that the text inside was too small once shrunk to ~20px
-# Plain bold text filling essentially the whole canvas (margin is ~1px at
-# 4x supersample, i.e. near-zero), auto-shrunk only as much as needed to fit,
-# is what actually reads at real size. Verify with the "simulate actual size"
-# snippet at the bottom before trusting a preview at full 128px.
+# Bold Korean text with a "sticker" white outline hugging the glyph shapes —
+# a die-cut border, not a padded pill/badge. The earlier pill/ring badge
+# failed because it added padding around the text, shrinking it inside a
+# fixed-size frame; this instead stamps the SAME text in white at many small
+# offsets around a circle of radius $outline (a cheap Minkowski-sum dilate),
+# then draws the real colored text on top — the outline only ever costs the
+# fit-loop a margin equal to its own width, not a separate shape's padding.
 #
-# Output is a few KB (flat color, no photo noise) — nowhere near Slack's
-# 128KB custom-emoji limit.
+# Verify with the "simulate actual size" step before trusting a 128px preview
+# — Slack shows status emoji at ~16-20px inline.
 
 Add-Type -AssemblyName System.Drawing
 
-function New-TextEmoji {
+function New-StickerEmoji {
     param(
         [string]$Text,
         [string]$DestPath,
         [int]$OutSize = 128,
-        [int]$Super = 4,               # supersample factor for crisp edges
-        [string]$TextHex = "0288D1",   # readable in both Slack themes
+        [int]$Super = 4,                 # supersample factor for crisp edges
+        [string]$TextHex = "0288D1",     # readable in both Slack themes
+        [string]$OutlineHex = "FFFFFF",  # sticker peel border
+        [double]$OutlineRatio = 0.07,    # outline thickness as a fraction of OutSize
         [string]$FontFamily = "Malgun Gothic"
     )
     $big = $OutSize * $Super
@@ -31,15 +29,14 @@ function New-TextEmoji {
     $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
     $g.Clear([System.Drawing.Color]::Transparent)
 
-    $margin = [int](1 * $Super)   # near-zero — fill every pixel we can
+    $outline = [int]($big * $OutlineRatio)
+    $margin = $outline
     $maxW = $big - 2 * $margin
     $maxH = $big - 2 * $margin
 
     $textColor = [System.Drawing.ColorTranslator]::FromHtml("#$TextHex")
+    $outlineColor = [System.Drawing.ColorTranslator]::FromHtml("#$OutlineHex")
 
-    # GenericTypographic drops the extra side/line padding StringFormat's
-    # default layout reserves, so MeasureString reports the glyphs' real
-    # bounding box — the fit loop below can then land on a bigger font size.
     $fmt = [System.Drawing.StringFormat]::GenericTypographic.Clone()
     $fmt.Alignment = [System.Drawing.StringAlignment]::Center
     $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
@@ -55,8 +52,25 @@ function New-TextEmoji {
         $fontSize -= 1
     }
 
-    $brush = New-Object System.Drawing.SolidBrush($textColor)
     $rect = New-Object System.Drawing.RectangleF(0, 0, $big, $big)
+
+    # Stamp the outline color at many offsets around two concentric circles
+    # (radius $outline and 0.6x that) so the union hugs every glyph — thin
+    # strokes included — like a dilated mask, not a separate ring shape.
+    $outlineBrush = New-Object System.Drawing.SolidBrush($outlineColor)
+    foreach ($rMul in @(1.0, 0.6)) {
+        $r = $outline * $rMul
+        $steps = 24
+        for ($i = 0; $i -lt $steps; $i++) {
+            $theta = 2 * [Math]::PI * $i / $steps
+            $dx = [float]($r * [Math]::Cos($theta))
+            $dy = [float]($r * [Math]::Sin($theta))
+            $offRect = New-Object System.Drawing.RectangleF($dx, $dy, $big, $big)
+            $g.DrawString($Text, $font, $outlineBrush, $offRect, $fmt)
+        }
+    }
+
+    $brush = New-Object System.Drawing.SolidBrush($textColor)
     $g.DrawString($Text, $font, $brush, $rect, $fmt)
 
     $g.Dispose()
@@ -72,12 +86,9 @@ function New-TextEmoji {
     $final.Save($DestPath, [System.Drawing.Imaging.ImageFormat]::Png)
     $final.Dispose()
     $bytes = (Get-Item $DestPath).Length
-    Write-Output "$DestPath -> $bytes bytes (font ${fontSize}px of ${big}px canvas)"
+    Write-Output "$DestPath -> $bytes bytes (font ${fontSize}px of ${big}px canvas, outline ${outline}px)"
 }
 
-# Windows PowerShell 5.1 mangles literal Korean characters in a .ps1 file
-# saved as UTF-8 without a BOM, so the text to render is passed as base64
-# (UTF-8 bytes) instead of embedding it directly in the script.
 function From-B64 {
     param([string]$B64)
     return [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($B64))
@@ -85,6 +96,6 @@ function From-B64 {
 
 # --- current set (regenerate with: node -e "console.log(Buffer.from('연차','utf8').toString('base64'))") ---
 $outDir = Join-Path $env:USERPROFILE "Desktop"
-New-TextEmoji -Text (From-B64 "7Jew7LCo")     -DestPath (Join-Path $outDir "yeoncha.png")
-New-TextEmoji -Text (From-B64 "67CY7LCo")     -DestPath (Join-Path $outDir "bancha.png")
-New-TextEmoji -Text (From-B64 "67CY67CY7LCo") -DestPath (Join-Path $outDir "banbancha.png")
+New-StickerEmoji -Text (From-B64 "7Jew7LCo")     -DestPath (Join-Path $outDir "yeoncha.png")
+New-StickerEmoji -Text (From-B64 "67CY7LCo")     -DestPath (Join-Path $outDir "bancha.png")
+New-StickerEmoji -Text (From-B64 "67CY67CY7LCo") -DestPath (Join-Path $outDir "banbancha.png")
