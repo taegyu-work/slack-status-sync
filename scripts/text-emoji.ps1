@@ -5,9 +5,10 @@
 #   - handwritten text (cursive strokes) was illegible even before shrinking
 #   - a pill/ring outline around the text (badge style) ate enough of the
 #     128x128 canvas that the text inside was too small once shrunk to ~20px
-# Plain bold text at ~85% of the canvas, auto-shrunk only as much as needed
-# to fit, is what actually reads at real size. Verify with the "simulate
-# actual size" snippet at the bottom before trusting a preview at full 128px.
+# Plain bold text filling essentially the whole canvas (margin is ~1px at
+# 4x supersample, i.e. near-zero), auto-shrunk only as much as needed to fit,
+# is what actually reads at real size. Verify with the "simulate actual size"
+# snippet at the bottom before trusting a preview at full 128px.
 #
 # Output is a few KB (flat color, no photo noise) — nowhere near Slack's
 # 128KB custom-emoji limit.
@@ -30,26 +31,31 @@ function New-TextEmoji {
     $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
     $g.Clear([System.Drawing.Color]::Transparent)
 
-    $margin = [int](4 * $Super)   # minimal margin — maximize glyph size
+    $margin = [int](1 * $Super)   # near-zero — fill every pixel we can
     $maxW = $big - 2 * $margin
     $maxH = $big - 2 * $margin
 
     $textColor = [System.Drawing.ColorTranslator]::FromHtml("#$TextHex")
 
-    $fontSize = [double]($big * 0.85)
+    # GenericTypographic drops the extra side/line padding StringFormat's
+    # default layout reserves, so MeasureString reports the glyphs' real
+    # bounding box — the fit loop below can then land on a bigger font size.
+    $fmt = [System.Drawing.StringFormat]::GenericTypographic.Clone()
+    $fmt.Alignment = [System.Drawing.StringAlignment]::Center
+    $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
+
+    $fontSize = [double]($big * 1.15)   # start oversized; loop shrinks to fit
     $sz = $null
     while ($fontSize -gt 4) {
         $font = New-Object System.Drawing.Font($FontFamily, $fontSize, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
-        $sz = $g.MeasureString($Text, $font)
+        $layout = New-Object System.Drawing.SizeF(($big * 2), ($big * 2))
+        $sz = $g.MeasureString($Text, $font, $layout, $fmt)
         if ($sz.Width -le $maxW -and $sz.Height -le $maxH) { break }
         $font.Dispose()
         $fontSize -= 1
     }
 
     $brush = New-Object System.Drawing.SolidBrush($textColor)
-    $fmt = New-Object System.Drawing.StringFormat
-    $fmt.Alignment = [System.Drawing.StringAlignment]::Center
-    $fmt.LineAlignment = [System.Drawing.StringAlignment]::Center
     $rect = New-Object System.Drawing.RectangleF(0, 0, $big, $big)
     $g.DrawString($Text, $font, $brush, $rect, $fmt)
 
