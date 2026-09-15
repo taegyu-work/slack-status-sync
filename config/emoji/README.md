@@ -1,7 +1,7 @@
 # Custom Slack emoji
 
 Handwritten by 이태규, processed into Slack-ready stickers (128×128, light-blue
-ink `#4FC3F7`, white outline traced around the letters via mask dilation,
+ink `#0288D1`, white outline traced around the letters via mask dilation,
 transparent everywhere else — see the emoji-generation commit for the script).
 
 Uploaded to the EverTri workspace as:

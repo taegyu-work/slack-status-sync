@@ -1,11 +1,18 @@
 # Turns a photo of handwritten text into Slack-ready custom-emoji PNGs:
 # crops a square region per word, resizes to 128x128, thresholds to an ink
 # mask, dilates it into a white "sticker" outline traced around the letters,
-# and renders ink in light blue on a transparent background everywhere else.
+# and renders ink in a dark-ish blue on a transparent background everywhere
+# else.
 #
 # Usage: adjust $srcImg and the Export-Emoji calls at the bottom (crop boxes
 # are specific to one source photo's layout/resolution — re-measure them for
-# a new photo, e.g. with a gridded debug crop, before reusing this).
+# a new photo, e.g. with a gridded debug crop, before reusing this). Crop as
+# TIGHT as you can around the ink (minimal padding) — Slack always displays
+# emoji at a fixed small size, so anything less than a tight crop just makes
+# the handwriting look smaller/fainter for no benefit. A word with more
+# syllables (wider) will still look smaller than a shorter word even at the
+# tightest possible crop, since both share the same square canvas — the only
+# real fix for that is a two-line layout of the source handwriting.
 #
 # Output stays under Slack's 128KB custom-emoji limit by a wide margin
 # (usually 1-2KB) since it's a flat-color mask, not a photo.
@@ -69,9 +76,9 @@ function Export-Emoji {
         }
     }
 
-    # 4. Render: ink = light blue, halo = white outline, else transparent
+    # 4. Render: ink = dark-ish blue, halo = white outline, else transparent
     $final = New-Object System.Drawing.Bitmap($OutSize, $OutSize, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-    $inkColor = [System.Drawing.Color]::FromArgb(255, 79, 195, 247)
+    $inkColor = [System.Drawing.Color]::FromArgb(255, 2, 136, 209)  # #0288D1
     $haloColor = [System.Drawing.Color]::FromArgb(255, 255, 255, 255)
     $clear = [System.Drawing.Color]::FromArgb(0, 255, 255, 255)
     for ($yy = 0; $yy -lt $OutSize; $yy++) {
@@ -92,9 +99,9 @@ function Export-Emoji {
     Write-Output "$DestPath -> $bytes bytes"
 }
 
-# --- Example (the 2026-09-15 연차/반차/반반차 batch) ---
+# --- Example (the final 2026-09-15 연차/반차/반반차 batch, tight crops) ---
 # $srcImg = "$env:USERPROFILE\Desktop\20260915_131829.jpg"
 # $outDir = "$env:USERPROFILE\Desktop"
-# Export-Emoji -SourcePath $srcImg -DestPath (Join-Path $outDir "yeoncha.png")   -CropX 902 -CropY 298  -CropW 1144 -CropH 1144
-# Export-Emoji -SourcePath $srcImg -DestPath (Join-Path $outDir "bancha.png")    -CropX 994 -CropY 1648 -CropW 912  -CropH 912
-# Export-Emoji -SourcePath $srcImg -DestPath (Join-Path $outDir "banbancha.png") -CropX 982 -CropY 2501 -CropW 1200 -CropH 1200
+# Export-Emoji -SourcePath $srcImg -DestPath (Join-Path $outDir "yeoncha.png")   -CropX 1022 -CropY 430  -CropW 860 -CropH 860
+# Export-Emoji -SourcePath $srcImg -DestPath (Join-Path $outDir "bancha.png")    -CropX 1098 -CropY 1782 -CropW 706 -CropH 706
+# Export-Emoji -SourcePath $srcImg -DestPath (Join-Path $outDir "banbancha.png") -CropX 1102 -CropY 2621 -CropW 960 -CropH 960
