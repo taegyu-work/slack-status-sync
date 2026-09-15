@@ -62,6 +62,7 @@ per run spills large 09:00 transitions onto the next tick.
 | `scripts/push-roster.mjs` | push local `config/roster.csv` → KV (`npm run roster:push`) |
 | `config/settings.json` | timezone, working hours, look-ahead, meeting toggle |
 | `config/status-map.json` | type → status text / emoji / DND |
+| `config/emoji/` | the custom `:yeoncha:`/`:bancha:`/`:banbancha:` emoji referenced above (source PNGs + upload notes) |
 | `config/roster.example.csv` | roster format (real `roster.csv` is git-ignored) |
 | `worker/src/index.js` | Cloudflare Worker — connect flow + KV store + sync API + **cron writer** |
 | `worker/wrangler.toml` | KV binding + `[triggers] crons` |
@@ -135,6 +136,12 @@ ends with any other errors.
   in `status-map.json`, distinct from `반차` — since the hr@ calendar uses it
   for real, shorter blocks (e.g. `(14:00~16:00)`) and showing it as a normal
   half-day 반차 status would overstate how long the person's away.
+- **연차/반차/반반차 use custom emoji** (`:yeoncha:`/`:bancha:`/`:banbancha:`)
+  — handwritten by 이태규, turned into 128×128 sticker-style PNGs (light-blue
+  ink, white outline traced around the letters, transparent elsewhere) by
+  `scripts/handwritten-emoji.ps1` and uploaded to the EverTri workspace. See
+  `config/emoji/README.md`. Custom emoji are workspace-local — moving to a
+  different Slack workspace means re-uploading them there first.
 - **Config lives in the repo** — `status-map.json` / `settings.json` changes reach
   the Worker only on `wrangler deploy`, and the GitHub job on push.
 - **Off-hours cleanup is automatic** — the writer only runs ~07:00–19:00 KST;
